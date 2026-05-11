@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Meat Shop Fast POS</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Space Mono', 'monospace'],
+                    },
+                    colors: {
+                        'utility-red': '#E53935',
+                        'utility-green': '#43A047',
+                        'utility-yellow': '#FDD835',
+                        'utility-blue': '#1E88E5',
+                        'utility-dark': '#212121',
+                        'utility-bg': '#F5F5F5'
+                    },
+                    boxShadow: {
+                        'hard': '4px 4px 0px rgba(0,0,0,0.2)',
+                        'hard-active': '1px 1px 0px rgba(0,0,0,0.2)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { 
+            background-color: #e0e0e0; /* Slightly darker grey for industrial feel */
+            overscroll-behavior-y: none; /* Prevent pull-to-refresh */
+            touch-action: manipulation; /* Disable double-tap to zoom */
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Tactile button active state */
+        .btn-tactile:active {
+            transform: translate(2px, 2px);
+            box-shadow: 1px 1px 0px rgba(0,0,0,0.2);
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body class="text-utility-dark font-sans h-screen w-screen overflow-hidden flex justify-center bg-gray-200">
+    <!-- App Container (Mobile Width Constrained) -->
+    <div id="root" class="w-full max-w-md bg-white h-full flex flex-col relative shadow-2xl overflow-hidden"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // --- Audio Engine (Web Audio API for offline zero-latency sounds) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        const playTone = (frequency, type, duration, vol = 0.1) => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.type = type;
+            oscillator.frequency.value = frequency;
+            
+            gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + duration);
+        };
+
+        const sounds = {
+            click: () => playTone(800, 'sine', 0.1, 0.05),
+            success: () => {
+                playTone(500, 'square', 0.1, 0.05);
+                setTimeout(() => playTone(800, 'square', 0.2, 0.05), 100);
+            },
+            cancel: () => playTone(300, 'sawtooth', 0.2, 0.05),
+            error: () => playTone(150, 'sawtooth', 0.3, 0.1)
+        };
+
+        // --- Translations ---
+        const i18n = {
+            en: {
+                app_title: "FastMeat POS",
+                whole_chicken: "Whole Chicken",
+                ready_chicken: "Readymade",
+                paid_now: "PAID NOW",
+                in_queue: "IN QUEUE",
+                cancel: "Cancel",
+                today_sales: "Today's Sales",
+                queue: "Queue",
+                history: "History",
+                settings: "Settings",
+                weight_g: "Weight (Grams)",
+                price_rs: "Price (₹)",
+                calc_breakdown: "Calculation",
+                price_whole: "Whole Price/Kg",
+                price_ready: "Ready Price/Kg",
+                save: "Save Settings",
+                clear: "Clear",
+                mark_paid: "Mark Paid",
+                no_transactions: "No transactions yet today.",
+                extra_items: "Extra Items",
+                total_payable: "Total Payable",
+                tab_sell: "Sell",
+                tab_customers: "Customers",
+                tab_sales: "Sales",
+                misc_rev: "Misc / Extras",
+                edit: "Edit"
+            },
+            kn: {
+                app_title: "ಫಾಸ್ಟ್ ಮೀಟ್ POS",
+                whole_chicken: "ಪೂರ್ಣ ಕೋಳಿ",
+                ready_chicken: "ರೆಡಿಮೇಡ್",
+                paid_now: "ಪಾವತಿಸಲಾಗಿದೆ",
+                in_queue: "ಕ್ಯೂ (ಬಾಕಿ)",
+                cancel: "ರದ್ದು",
+                today_sales: "ಇಂದಿನ ವ್ಯಾಪಾರ",
+                queue: "ಬಾಕಿ",
+                history: "ಇತಿಹಾಸ",
+                settings: "ಸೆಟ್ಟಿಂಗ್",
+                weight_g: "ತೂಕ (ಗ್ರಾಂ)",
+                price_rs: "ಬೆಲೆ (₹)",
+                calc_breakdown: "ಲೆಕ್ಕಾಚಾರ",
+                price_whole: "ಪೂರ್ಣ ಬೆಲೆ/ಕೆಜಿ",
+                price_ready: "ರೆಡಿಮೇಡ್ ಬೆಲೆ/ಕೆಜಿ",
+                save: "ಉಳಿಸು",
+                clear: "ಅಳಿಸು",
+                mark_paid: "ಹಣ ಬಂದಿದೆ",
+                no_transactions: "ಇಂದು ಯಾವುದೇ ವ್ಯಾಪಾರವಿಲ್ಲ.",
+                extra_items: "ಇತರೆ ವಸ್ತುಗಳು",
+                total_payable: "ಒಟ್ಟು ಪಾವತಿಸಬೇಕು",
+                tab_sell: "ಮಾರಾಟ",
+                tab_customers: "ಗ್ರಾಹಕರು",
+                tab_sales: "ವ್ಯಾಪಾರ",
+                misc_rev: "ಇತರೆ ವಸ್ತುಗಳು",
+                edit: "ತಿದ್ದು"
+            },
+            hi: {
+                app_title: "फ़ास्ट मीट POS",
+                whole_chicken: "पूरा मुर्गा",
+                ready_chicken: "रेडीमेड",
+                paid_now: "पैसे मिले",
+                in_queue: "बाकी (कतार)",
+                cancel: "रद्द करें",
+                today_sales: "आज की बिक्री",
+                queue: "बाकी",
+                history: "इतिहास",
+                settings: "सेटिंग्स",
+                weight_g: "वजन (ग्राम)",
+                price_rs: "कीमत (₹)",
+                calc_breakdown: "हिसाब",
+                price_whole: "पूरा दाम/किलो",
+                price_ready: "रेडीमेड दाम/किलो",
+                save: "सेव करें",
+                clear: "साफ़ करें",
+                mark_paid: "पैसे मिल गए",
+                no_transactions: "आज कोई लेन-देन नहीं हुआ।",
+                extra_items: "अन्य सामग्री",
+                total_payable: "कुल देय राशि",
+                tab_sell: "बिक्री",
+                tab_customers: "ग्राहक",
+                tab_sales: "हिसाब",
+                misc_rev: "अन्य सामग्री",
+                edit: "संपादित करें"
+            }
+        };
+
+        // --- Custom Hook for Local Storage ---
+        function useStickyState(defaultValue, key) {
+            const [value, setValue] = useState(() => {
+                const stickyValue = window.localStorage.getItem(key);
+                return stickyValue !== null
+                    ? JSON.parse(stickyValue)
+                    : defaultValue;
+            });
+            useEffect(() => {
+                window.localStorage.setItem(key, JSON.stringify(value));
+            }, [key, value]);
+            return [value, setValue];
+        }
+
+        // --- Main App Component ---
+        const App = () => {
+            // State
+            const [lang, setLang] = useStickyState('en', 'fm_lang');
+            const [prices, setPrices] = useStickyState({ whole: 160, ready: 240 }, 'fm_prices');
+            const [transactions, setTransactions] = useStickyState([], 'fm_transactions');
+            
+            const [view, setView] = useState('sell'); // sell, customers, sales, transaction, settings
+            const [selectedItem, setSelectedItem] = useState(null); // 'whole' or 'ready'
+            const [weightStr, setWeightStr] = useState('');
+            const [amountStr, setAmountStr] = useState('');
+            const [inputMode, setInputMode] = useState('weight'); // 'weight' or 'amount'
+            const [showBreakdown, setShowBreakdown] = useState(false);
+            
+            // Calculator / Extras States
+            const [activeField, setActiveField] = useState('chicken'); // 'chicken' or 'extras'
+            const [extrasExp, setExtrasExp] = useState(''); // holds math string e.g., '5*7+10'
+            const [editingId, setEditingId] = useState(null); // ID of transaction being edited
+
+            const t = i18n[lang];
+
+            // Setup Lucide icons after render
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            });
+
+            // --- STREAMING_CHUNK:Core Logic Handlers ---
+            const handleItemSelect = (item) => {
+                sounds.click();
+                setSelectedItem(item);
+                setWeightStr('');
+                setAmountStr('');
+                setInputMode('weight');
+                setActiveField('chicken');
+                setExtrasExp('');
+                setEditingId(null);
+                setView('transaction');
+            };
+
+            const handleKeypad = (val) => {
+                sounds.click();
+                
+                // Mathematical Operators (+, -, *) shift focus to extras automatically
+                if (['+', '-', '*'].includes(val)) {
+                    if (activeField === 'chicken') {
+                        setActiveField('extras');
+                        if (val === '-') setExtrasExp('-');
+                        else if (val === '+') setExtrasExp(''); // Start fresh addition
+                        // ignore '*' if empty
+                    } else {
+                        // Already in extras, prevent duplicate operators
+                        if (extrasExp === '' && val !== '-') return;
+                        if (/[+\-*]$/.test(extrasExp)) {
+                            setExtrasExp(prev => prev.slice(0, -1) + val);
+                        } else {
+                            setExtrasExp(prev => prev + val);
+                        }
+                    }
+                    return;
+                }
+
+                if (val === 'C') {
+                    if (activeField === 'extras') {
+                        setExtrasExp('');
+                        setActiveField('chicken');
+                    } else {
+                        if (inputMode === 'weight') setWeightStr('');
+                        else setAmountStr('');
+                    }
+                    return;
+                }
+
+                if (val === 'BACK') {
+                    if (activeField === 'extras') {
+                        if (extrasExp.length > 0) {
+                            setExtrasExp(prev => prev.slice(0, -1));
+                        }
+                        // Drop back to chicken input if extras becomes completely empty
+                        if (extrasExp.length <= 1) {
+                            setActiveField('chicken');
+                        }
+                    } else {
+                        if (inputMode === 'weight') setWeightStr(prev => prev.slice(0, -1));
+                        else setAmountStr(prev => prev.slice(0, -1));
+                    }
+                    return;
+                }
+
+                if (val === 'KG' && inputMode === 'weight') {
+                    if (!weightStr) return;
+                    const num = parseFloat(weightStr);
+                    if (!isNaN(num)) {
+                        let newWeight = num * 1000;
+                        if (newWeight > 99999) newWeight = 99999;
+                        setWeightStr(newWeight.toString());
+                    }
+                    return;
+                }
+
+                // Handle numbers and decimals
+                if (activeField === 'extras') {
+                    if (extrasExp.length < 25) { // Safe max length limit
+                        setExtrasExp(prev => prev + val);
+                    }
+                } else {
+                    const isWeightMode = inputMode === 'weight';
+                    if (val === '.') {
+                        if (isWeightMode) {
+                            if (!weightStr.includes('.')) setWeightStr(prev => prev === '' ? '0.' : prev + '.');
+                        } else {
+                            if (!amountStr.includes('.')) setAmountStr(prev => prev === '' ? '0.' : prev + '.');
+                        }
+                        return;
+                    }
+                    if (val === '00') {
+                         if (isWeightMode && weightStr.length < 5) setWeightStr(prev => prev + '00');
+                         else if (!isWeightMode && amountStr.length < 5) setAmountStr(prev => prev + '00');
+                         return;
+                    }
+                    // regular numbers
+                    if (isWeightMode && weightStr.length < 6) {
+                        setWeightStr(prev => prev + val);
+                    } else if (!isWeightMode && amountStr.length < 6) {
+                        setAmountStr(prev => prev + val);
+                    }
+                }
+            };
+
+            const isWhole = selectedItem === 'whole';
+            const currentPriceKg = isWhole ? prices.whole : prices.ready;
+            
+            let shouldCalculate = false;
+            let finalWeight = 0;
+            let finalPrice = 0;
+
+            if (inputMode === 'weight') {
+                const digitCount = weightStr.replace('.', '').length;
+                if (isWhole && digitCount >= 4) {
+                    shouldCalculate = true;
+                } else if (!isWhole && digitCount >= 3) {
+                    shouldCalculate = true;
+                }
+                finalWeight = Math.round(parseFloat(weightStr || '0'));
+                finalPrice = shouldCalculate ? Math.round((finalWeight / 1000) * currentPriceKg) : 0;
+            } else {
+                const digitCount = amountStr.replace('.', '').length;
+                if (digitCount > 0) {
+                    shouldCalculate = true;
+                }
+                finalPrice = Math.round(parseFloat(amountStr || '0'));
+                finalWeight = shouldCalculate ? Math.round((finalPrice / currentPriceKg) * 1000) : 0;
+            }
+
+            // Safe mathematical evaluation for Extras string
+            const evaluateExtras = (exp) => {
+                if (!exp) return 0;
+                try {
+                    const sanitized = exp.replace(/[^0-9+\-*.]/g, '');
+                    if (!sanitized) return 0;
+                    const cleanExp = sanitized.replace(/[+\-*]+$/, ''); // remove trailing operators
+                    if (!cleanExp) return 0;
+                    const result = new Function(`return ${cleanExp}`)();
+                    return isNaN(result) || !isFinite(result) ? 0 : Math.round(result);
+                } catch (e) {
+                    return 0;
+                }
+            };
+
+            const extrasValue = evaluateExtras(extrasExp);
+            const totalPrice = finalPrice + extrasValue;
+
+            const handleTransaction = (status) => {
+                // Must have at least chicken OR extras to save
+                if ((!shouldCalculate || finalPrice <= 0) && extrasValue <= 0) {
+                    sounds.error();
+                    return;
+                }
+                
+                const newTx = {
+                    id: editingId || Date.now().toString(),
+                    item: selectedItem,
+                    weight: finalWeight,
+                    price: totalPrice,
+                    chickenPrice: finalPrice,
+                    extrasValue: extrasValue,
+                    extrasExp: extrasExp,
+                    inputMode: inputMode,
+                    status: status,
+                    timestamp: editingId ? transactions.find(t => t.id === editingId).timestamp : new Date().toISOString()
+                };
+
+                if (editingId) {
+                    setTransactions(prev => prev.map(tx => tx.id === editingId ? newTx : tx));
+                } else {
+                    setTransactions(prev => [newTx, ...prev]);
+                }
+                
+                if (status === 'paid') sounds.success();
+                else sounds.click();
+
+                // Reset and go back
+                setSelectedItem(null);
+                setWeightStr('');
+                setAmountStr('');
+                setInputMode('weight');
+                setActiveField('chicken');
+                setExtrasExp('');
+                setEditingId(null);
+                setView(editingId ? 'customers' : 'sell');
+            };
+
+            const handleCancel = () => {
+                sounds.cancel();
+                setSelectedItem(null);
+                setWeightStr('');
+                setAmountStr('');
+                setInputMode('weight');
+                setActiveField('chicken');
+                setExtrasExp('');
+                
+                const prevView = editingId ? 'customers' : 'sell';
+                setEditingId(null);
+                setView(prevView);
+            };
+
+            const editTransaction = (tx) => {
+                sounds.click();
+                setEditingId(tx.id);
+                setSelectedItem(tx.item);
+                setWeightStr(tx.weight > 0 ? tx.weight.toString() : '');
+                setAmountStr(tx.inputMode === 'amount' ? tx.chickenPrice.toString() : '');
+                setInputMode(tx.inputMode || 'weight');
+                setExtrasExp(tx.extrasExp || '');
+                setActiveField('chicken');
+                setView('transaction');
+            };
+
+            // --- Sub-components rendering ---
+
+            const renderHeader = () => (
+                <div class="bg-utility-dark text-white p-4 flex justify-between items-center shadow-md z-10 shrink-0">
+                    <h1 class="font-black text-xl tracking-wider flex items-center gap-2">
+                        <i data-lucide="calculator" class="w-6 h-6 text-utility-yellow"></i>
+                        {t.app_title}
+                    </h1>
+                    <div class="flex gap-4">
+                        <button onClick={() => { sounds.click(); setView('settings'); }} class="p-2 bg-gray-800 rounded-lg btn-tactile">
+                            <i data-lucide="settings" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+            );
+
+            const renderSell = () => {
+                return (
+                    <div class="flex-1 flex flex-col p-4 gap-6 bg-utility-bg overflow-y-auto">
+                        
+                        {/* Primary Action Buttons - Massive for muscle memory */}
+                        <div class="flex-1 flex flex-col gap-6 justify-center">
+                            <button 
+                                onClick={() => handleItemSelect('whole')}
+                                class="flex-1 max-h-64 bg-[#FFF5E1] border-4 border-[#FF9800] rounded-2xl p-6 flex flex-col items-center justify-center btn-tactile transition-transform relative overflow-hidden shadow-[4px_4px_0px_#FF9800]"
+                            >
+                                <div class="absolute top-4 right-6 text-[#FF9800] font-black text-2xl opacity-50">₹{prices.whole}/kg</div>
+                                <i data-lucide="drumstick" class="w-20 h-20 text-[#FF9800] mb-4"></i>
+                                <span class="text-3xl font-black text-gray-900 uppercase tracking-wide">{t.whole_chicken}</span>
+                            </button>
+
+                            <button 
+                                onClick={() => handleItemSelect('ready')}
+                                class="flex-1 max-h-64 bg-[#FFEbee] border-4 border-[#F44336] rounded-2xl p-6 flex flex-col items-center justify-center btn-tactile transition-transform relative overflow-hidden shadow-[4px_4px_0px_#F44336]"
+                            >
+                                <div class="absolute top-4 right-6 text-[#F44336] font-black text-2xl opacity-50">₹{prices.ready}/kg</div>
+                                <i data-lucide="package" class="w-20 h-20 text-[#F44336] mb-4"></i>
+                                <span class="text-3xl font-black text-gray-900 uppercase tracking-wide">{t.ready_chicken}</span>
+                            </button>
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderTransaction = () => {
+                const isWhole = selectedItem === 'whole';
+                const themeColor = isWhole ? 'bg-[#FF9800]' : 'bg-[#F44336]';
+                const themeBorder = isWhole ? 'border-[#FF9800]' : 'border-[#F44336]';
+                const themeText = isWhole ? 'text-[#FF9800]' : 'text-[#F44336]';
+
+                const showKgButton = !isWhole && inputMode === 'weight';
+
+                return (
+                    <div class="flex-1 flex flex-col bg-gray-100 h-full w-full overflow-hidden absolute top-0 left-0 z-50">
+                        {/* Scrollable upper section for displays */}
+                        <div class="flex-1 overflow-y-auto flex flex-col hide-scrollbar">
+                            {/* Header for transaction */}
+                            <div class={`${themeColor} text-white p-3 flex justify-between items-center shadow-md shrink-0`}>
+                                <div class="font-black text-lg uppercase flex items-center gap-2">
+                                    {editingId && <span class="bg-white/30 px-2 rounded text-sm"><i data-lucide="edit" class="w-4 h-4 inline"></i> {t.edit}</span>}
+                                    {isWhole ? t.whole_chicken : t.ready_chicken}
+                                </div>
+                                <div class="font-bold bg-white/20 px-2 py-1 rounded">@ ₹{currentPriceKg}/kg</div>
+                            </div>
+
+                            {/* Chicken Display Area */}
+                            <div 
+                                onClick={() => { sounds.click(); setActiveField('chicken'); }}
+                                class={`bg-white p-2 shadow-sm border-b-2 transition-colors cursor-pointer shrink-0 ${activeField === 'chicken' ? 'bg-blue-50 border-utility-blue ring-inset ring-4 ring-blue-400' : 'border-gray-200'}`}
+                            >
+                                <div class="flex gap-2 items-stretch">
+                                    {/* Weight Input Mode Button */}
+                                    <div 
+                                        onClick={(e) => { 
+                                            if (isWhole) return;
+                                            if (activeField === 'chicken') {
+                                                sounds.click(); 
+                                                if (inputMode === 'amount') {
+                                                    setWeightStr(shouldCalculate ? finalWeight.toString() : '');
+                                                    setInputMode('weight');
+                                                }
+                                            }
+                                        }}
+                                        class={`flex-1 py-2 px-1 rounded-xl border-4 transition-all flex flex-col items-center justify-center relative ${inputMode === 'weight' ? `border-gray-800 bg-white shadow-[4px_4px_0px_rgba(0,0,0,0.8)] ${!isWhole ? 'cursor-pointer' : ''}` : 'border-transparent bg-gray-100 opacity-60 cursor-pointer'}`}
+                                    >
+                                        <div class="text-[10px] font-bold text-gray-500 uppercase mb-0.5 flex items-center gap-1">
+                                            <i data-lucide="edit-2" class={`w-3 h-3 ${inputMode === 'weight' && activeField === 'chicken' ? 'block' : 'hidden'}`}></i> {t.weight_g}
+                                        </div>
+                                        <div class={`text-2xl font-mono font-black ${inputMode === 'weight' && activeField === 'chicken' ? 'text-gray-900' : 'text-gray-500'}`}>
+                                            {inputMode === 'weight' ? (weightStr || '0') : finalWeight}
+                                        </div>
+                                    </div>
+
+                                    {/* Swap/Equals Icon & Info */}
+                                    <div class="flex flex-col items-center justify-center gap-1">
+                                        {isWhole ? (
+                                            <i data-lucide="equal" class="w-5 h-5 text-gray-400"></i>
+                                        ) : (
+                                            <i data-lucide="arrow-right-left" class="w-5 h-5 text-gray-400"></i>
+                                        )}
+                                        <div class="text-gray-400 cursor-pointer p-1.5 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors" onClick={(e) => { e.stopPropagation(); setShowBreakdown(!showBreakdown); }}>
+                                            <i data-lucide="info" class="w-4 h-4"></i>
+                                        </div>
+                                    </div>
+
+                                    {/* Amount Input Mode Button */}
+                                    <div 
+                                        onClick={(e) => { 
+                                            if (isWhole) return;
+                                            if (activeField === 'chicken') {
+                                                sounds.click(); 
+                                                if (inputMode === 'weight') {
+                                                    setAmountStr(shouldCalculate ? finalPrice.toString() : '');
+                                                    setInputMode('amount');
+                                                }
+                                            }
+                                        }}
+                                        class={`flex-1 py-2 px-1 rounded-xl border-4 transition-all flex flex-col items-center justify-center relative ${inputMode === 'amount' ? 'border-utility-green bg-green-50 shadow-[4px_4px_0px_#43A047] cursor-pointer' : (isWhole ? 'border-transparent bg-green-50' : 'border-transparent bg-gray-100 opacity-60 cursor-pointer')}`}
+                                    >
+                                        <div class="text-[10px] font-bold text-gray-500 uppercase mb-0.5 flex items-center gap-1">
+                                            <i data-lucide="edit-2" class={`w-3 h-3 ${inputMode === 'amount' && activeField === 'chicken' ? 'block text-utility-green' : 'hidden'}`}></i> {t.price_rs}
+                                        </div>
+                                        <div class={`text-2xl font-mono font-black ${inputMode === 'amount' || isWhole ? (activeField === 'chicken' ? 'text-utility-green' : 'text-green-700/60') : 'text-green-600/50'}`}>
+                                            ₹{inputMode === 'amount' ? (amountStr || '0') : (shouldCalculate ? finalPrice : '---')}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Calculation Trust Breakdown */}
+                                {showBreakdown && shouldCalculate && (
+                                    <div class="bg-blue-50 text-blue-800 p-1 text-xs font-mono mt-2 rounded border border-blue-200 animate-fade-in text-center">
+                                        {inputMode === 'weight' 
+                                            ? `(${finalWeight}g ÷ 1000) × ₹${currentPriceKg} = ₹${finalPrice.toFixed(2)}`
+                                            : `(₹${finalPrice} ÷ ₹${currentPriceKg}) × 1000 = ${finalWeight}g`
+                                        }
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Extras Calculator Area */}
+                            <div 
+                                onClick={() => { sounds.click(); setActiveField('extras'); }}
+                                class={`bg-white p-3 shadow-sm flex justify-between items-center transition-colors cursor-pointer shrink-0 ${activeField === 'extras' ? 'bg-purple-50 border-purple-500 ring-inset ring-4 ring-purple-400' : 'border-b-2 border-gray-200'}`}
+                            >
+                                <div class="flex flex-col">
+                                    <span class="text-xs font-bold text-gray-500 uppercase flex items-center gap-1 mb-1">
+                                        <i data-lucide="plus-circle" class={`w-3 h-3 ${activeField === 'extras' ? 'text-purple-600' : ''}`}></i> {t.extra_items}
+                                    </span>
+                                    <span class="text-xl font-mono font-black text-gray-800 tracking-wider h-7 flex items-center">
+                                        {extrasExp 
+                                            ? extrasExp.replace(/\*/g, '×').replace(/-/g, '−') 
+                                            : <span class="text-gray-300 font-normal text-sm italic">Add eggs, powder...</span>
+                                        }
+                                        {activeField === 'extras' && <span class="animate-pulse inline-block w-2 h-5 bg-purple-500 ml-1"></span>}
+                                    </span>
+                                </div>
+                                <div class="text-2xl font-black text-purple-700 font-mono">
+                                    +₹{extrasValue}
+                                </div>
+                            </div>
+
+                            {/* Total Payable Area */}
+                            <div class="bg-gray-800 text-white p-3 flex justify-between items-center shadow-[inset_0_4px_4px_rgba(0,0,0,0.3)] border-b-4 border-utility-dark shrink-0">
+                                <span class="text-sm font-black uppercase text-gray-300 tracking-wider flex items-center gap-2">
+                                    <i data-lucide="calculator" class="w-4 h-4"></i>
+                                    {t.total_payable}
+                                </span>
+                                <span class="text-4xl font-black text-utility-yellow font-mono">₹{totalPrice}</span>
+                            </div>
+                        </div>
+
+                        {/* FIXED BOTTOM SECTION - Keypad & Actions */}
+                        <div class="flex flex-col shrink-0 bg-gray-200 border-t-2 border-gray-300 shadow-[0_-5px_15px_rgba(0,0,0,0.1)] relative z-20">
+                            {/* 4x4 Standard Custom Calculator Keypad */}
+                            <div class="grid grid-cols-4 gap-2 p-2">
+                                {[
+                                    '1', '2', '3', '+',
+                                    '4', '5', '6', '-',
+                                    '7', '8', '9', '*',
+                                    'C', '0', isWhole ? '00' : '.', 'BACK'
+                                ].map(key => {
+                                    let bgColor = 'bg-white';
+                                    let textColor = 'text-gray-800';
+                                    let label = key;
+                                    let borderColor = 'border-gray-300';
+                                    
+                                    if (key === 'C') { textColor = 'text-red-500'; }
+                                    if (['+', '-', '*'].includes(key)) { 
+                                        bgColor = 'bg-gray-300'; 
+                                        textColor = 'text-gray-900 text-3xl'; 
+                                        borderColor = 'border-gray-400';
+                                        if(key === '*') label = '×';
+                                        if(key === '-') label = '−';
+                                    }
+                                    
+                                    if (key === 'BACK') {
+                                        return (
+                                            <button 
+                                                key={key} onClick={() => handleKeypad(key)}
+                                                class={`bg-gray-300 text-gray-700 rounded-xl border-b-4 border-gray-400 btn-tactile flex items-center justify-center py-2 h-14`}
+                                            >
+                                                <i data-lucide="delete" class="w-6 h-6"></i>
+                                            </button>
+                                        )
+                                    }
+
+                                    return (
+                                        <button 
+                                            key={key} 
+                                            onClick={() => handleKeypad(key)}
+                                            class={`${bgColor} ${textColor} text-3xl font-mono font-bold rounded-xl border-b-4 ${borderColor} btn-tactile flex items-center justify-center py-2 h-14`}
+                                        >
+                                            {label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            
+                            {/* Action Buttons Layer */}
+                            <div class="p-2 bg-white flex flex-col gap-2 border-t-2 border-gray-200 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] pb-safe">
+                                {/* Special massive KG button directly above actions for rapid ready-made typing */}
+                                {showKgButton && (
+                                    <button 
+                                        onClick={() => handleKeypad('KG')}
+                                        class="w-full bg-utility-blue text-white py-3 rounded-xl border-b-4 border-blue-700 font-black text-xl btn-tactile flex justify-center items-center gap-2 shadow-sm h-14"
+                                    >
+                                        <span class="text-sm uppercase font-bold text-blue-200 tracking-wider">Treat as</span> KG
+                                    </button>
+                                )}
+                                
+                                <div class="grid grid-cols-4 gap-2">
+                                    <button 
+                                        onClick={handleCancel}
+                                        class="col-span-1 bg-red-100 text-red-600 border-b-4 border-red-200 rounded-xl font-bold btn-tactile text-xs uppercase flex flex-col items-center justify-center py-2 h-16"
+                                    >
+                                        <i data-lucide="x" class="w-5 h-5 mb-1"></i>
+                                        {t.cancel}
+                                    </button>
+                                    
+                                    <button 
+                                        onClick={() => handleTransaction('queue')}
+                                        disabled={totalPrice <= 0}
+                                        class="col-span-1 bg-utility-yellow text-utility-dark border-b-4 border-[#FBC02D] rounded-xl font-black btn-tactile text-xs uppercase flex flex-col items-center justify-center disabled:opacity-50 h-16"
+                                    >
+                                        <i data-lucide="clock" class="w-5 h-5 mb-1"></i>
+                                        {t.queue}
+                                    </button>
+
+                                    <button 
+                                        onClick={() => handleTransaction('paid')}
+                                        disabled={totalPrice <= 0}
+                                        class="col-span-2 bg-utility-green text-white border-b-4 border-[#2E7D32] rounded-xl font-black btn-tactile text-lg uppercase flex items-center justify-center gap-2 disabled:opacity-50 h-16"
+                                    >
+                                        <i data-lucide="check-circle" class="w-6 h-6"></i>
+                                        {t.paid_now}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderCustomers = () => {
+                const today = new Date().toLocaleDateString();
+                const todayTx = transactions.filter(tx => new Date(tx.timestamp).toLocaleDateString() === today);
+                const queueTx = todayTx.filter(tx => tx.status === 'queue');
+                const paidTx = todayTx.filter(tx => tx.status === 'paid');
+                
+                const markPaid = (e, id) => {
+                    e.stopPropagation(); // prevent opening edit
+                    sounds.success();
+                    setTransactions(transactions.map(tx => tx.id === id ? { ...tx, status: 'paid' } : tx));
+                };
+
+                const deleteTx = (e, id) => {
+                    e.stopPropagation(); // prevent opening edit
+                    if(confirm("Delete this entry?")) {
+                        sounds.cancel();
+                        setTransactions(transactions.filter(tx => tx.id !== id));
+                    }
+                }
+
+                const renderList = (list, isQueue) => (
+                    list.length === 0 ? (
+                        <div class="text-center text-gray-400 py-4 text-sm font-bold opacity-50">No records</div>
+                    ) : (
+                        list.map(tx => (
+                            <div key={tx.id} onClick={() => editTransaction(tx)} class="bg-white p-3 rounded-xl shadow-sm border-l-4 flex justify-between items-center mb-3 cursor-pointer hover:bg-gray-50 active:bg-gray-100 btn-tactile transition-all"
+                                style={{ borderLeftColor: tx.status === 'paid' ? '#43A047' : '#FDD835' }}
+                            >
+                                <div>
+                                    <div class="font-bold text-gray-800 flex items-center gap-2">
+                                        {tx.item === 'whole' ? <i data-lucide="drumstick" class="w-4 h-4 text-orange-500"></i> : <i data-lucide="package" class="w-4 h-4 text-red-500"></i>}
+                                        {tx.weight > 0 ? `${tx.weight}g` : 'Extras Only'}
+                                        <span class="text-sm font-normal text-gray-400">
+                                            {new Date(tx.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                        </span>
+                                    </div>
+                                    <div class="text-xl font-black text-gray-900">₹{tx.price}</div>
+                                    {tx.extrasValue > 0 && (
+                                        <div class="text-[10px] text-purple-600 font-bold mt-1 bg-purple-50 px-2 py-0.5 rounded inline-block uppercase tracking-wider">
+                                            + {t.extra_items} (₹{tx.extrasValue})
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <div class="flex gap-2 items-center">
+                                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300 mr-1"></i>
+                                    {tx.status === 'queue' && (
+                                        <button onClick={(e) => markPaid(e, tx.id)} class="bg-utility-green text-white px-3 py-2 rounded-lg font-bold text-sm btn-tactile shadow-hard">
+                                            {t.mark_paid}
+                                        </button>
+                                    )}
+                                    <button onClick={(e) => deleteTx(e, tx.id)} class="bg-gray-200 text-gray-600 p-2 rounded-lg btn-tactile">
+                                         <i data-lucide="trash-2" class="w-5 h-5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    )
+                );
+
+                return (
+                    <div class="flex-1 flex flex-col bg-gray-100 h-full overflow-hidden">
+                        <div class="bg-utility-dark text-white p-4 flex justify-between items-center shadow-md shrink-0">
+                            <h2 class="font-bold text-lg flex items-center gap-2">
+                                <i data-lucide="users" class="w-5 h-5"></i> {t.tab_customers}
+                            </h2>
+                        </div>
+                        
+                        <div class="flex-1 overflow-y-auto p-4 hide-scrollbar">
+                            
+                            <h3 class="font-black text-gray-500 uppercase tracking-widest text-xs mb-3 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-utility-yellow inline-block"></span>
+                                {t.queue} ({queueTx.length})
+                            </h3>
+                            {renderList(queueTx, true)}
+
+                            <div class="h-px bg-gray-300 w-full my-6"></div>
+
+                            <h3 class="font-black text-gray-500 uppercase tracking-widest text-xs mb-3 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-utility-green inline-block"></span>
+                                {t.paid_now} ({paidTx.length})
+                            </h3>
+                            {renderList(paidTx, false)}
+
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderSales = () => {
+                const today = new Date().toLocaleDateString();
+                const todayTx = transactions.filter(tx => new Date(tx.timestamp).toLocaleDateString() === today);
+                const paidTx = todayTx.filter(tx => tx.status === 'paid');
+
+                const totalRev = paidTx.reduce((sum, tx) => sum + tx.price, 0);
+                const wholeRev = paidTx.filter(tx => tx.item === 'whole').reduce((sum, tx) => sum + tx.chickenPrice, 0);
+                const readyRev = paidTx.filter(tx => tx.item === 'ready').reduce((sum, tx) => sum + tx.chickenPrice, 0);
+                const miscRev = paidTx.reduce((sum, tx) => sum + tx.extrasValue, 0);
+
+                return (
+                    <div class="flex-1 flex flex-col bg-gray-100 h-full overflow-hidden">
+                        <div class="bg-utility-dark text-white p-4 flex justify-between items-center shadow-md shrink-0">
+                            <h2 class="font-bold text-lg flex items-center gap-2">
+                                <i data-lucide="bar-chart-2" class="w-5 h-5"></i> {t.tab_sales}
+                            </h2>
+                        </div>
+                        
+                        <div class="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar">
+                            {/* Total Sales Card */}
+                            <div class="bg-utility-green text-white p-6 rounded-2xl shadow-[4px_4px_0px_rgba(0,0,0,0.2)]">
+                                <h2 class="font-bold text-green-100 mb-1 uppercase text-sm tracking-wider">{t.today_sales}</h2>
+                                <div class="text-5xl font-black font-mono">₹{totalRev}</div>
+                                <div class="mt-2 text-sm font-medium text-green-200">
+                                    {paidTx.length} Completed Orders
+                                </div>
+                            </div>
+
+                            {/* Breakdown Cards */}
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-white p-4 rounded-xl border-t-4 border-[#FF9800] shadow-sm">
+                                    <div class="flex items-center gap-2 text-gray-500 mb-2">
+                                        <i data-lucide="drumstick" class="w-4 h-4 text-[#FF9800]"></i>
+                                        <span class="text-xs font-bold uppercase">{t.whole_chicken}</span>
+                                    </div>
+                                    <div class="text-2xl font-black text-gray-900 font-mono">₹{wholeRev}</div>
+                                </div>
+                                <div class="bg-white p-4 rounded-xl border-t-4 border-[#F44336] shadow-sm">
+                                    <div class="flex items-center gap-2 text-gray-500 mb-2">
+                                        <i data-lucide="package" class="w-4 h-4 text-[#F44336]"></i>
+                                        <span class="text-xs font-bold uppercase">{t.ready_chicken}</span>
+                                    </div>
+                                    <div class="text-2xl font-black text-gray-900 font-mono">₹{readyRev}</div>
+                                </div>
+                            </div>
+
+                            {/* Misc Revenue Card */}
+                            <div class="bg-purple-50 p-4 rounded-xl border-l-4 border-purple-500 shadow-sm flex justify-between items-center">
+                                <div class="flex items-center gap-2 text-purple-800">
+                                    <i data-lucide="plus-circle" class="w-5 h-5"></i>
+                                    <span class="font-bold uppercase tracking-wide text-sm">{t.misc_rev}</span>
+                                </div>
+                                <div class="text-2xl font-black text-purple-900 font-mono">₹{miscRev}</div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderSettings = () => {
+                const [localPrices, setLocalPrices] = useState(prices);
+
+                const saveSettings = () => {
+                    sounds.success();
+                    setPrices(localPrices);
+                    setView('home');
+                };
+
+                return (
+                    <div class="flex-1 flex flex-col bg-gray-100 h-full">
+                        <div class="bg-utility-dark text-white p-4 flex justify-between items-center shadow-md">
+                            <h2 class="font-bold text-lg flex items-center gap-2">
+                                <i data-lucide="settings" class="w-5 h-5"></i> {t.settings}
+                            </h2>
+                            <button onClick={() => {sounds.click(); setView('home')}} class="p-2 bg-gray-800 rounded-lg btn-tactile">
+                                <i data-lucide="x" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="p-5 space-y-6">
+                            {/* Language Selector */}
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                <h3 class="font-bold text-gray-600 mb-3 text-sm uppercase">Language / ಭಾಷೆ / भाषा</h3>
+                                <div class="flex gap-2">
+                                    {['en', 'kn', 'hi'].map(l => (
+                                        <button 
+                                            key={l}
+                                            onClick={() => { sounds.click(); setLang(l); }}
+                                            class={`flex-1 py-2 font-bold rounded-lg border-2 btn-tactile uppercase
+                                                ${lang === l ? 'bg-utility-blue text-white border-utility-blue' : 'bg-gray-100 text-gray-600 border-gray-200'}
+                                            `}
+                                        >
+                                            {l}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Price Settings */}
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                <h3 class="font-bold text-gray-600 mb-3 text-sm uppercase">Daily Rates (₹/kg)</h3>
+                                
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-2">
+                                            <i data-lucide="drumstick" class="w-4 h-4 text-orange-500"></i> {t.price_whole}
+                                        </label>
+                                        <input 
+                                            type="number" 
+                                            value={localPrices.whole}
+                                            onChange={(e) => setLocalPrices({...localPrices, whole: Number(e.target.value)})}
+                                            class="w-full text-2xl font-mono font-bold p-3 bg-gray-50 border-2 border-gray-300 rounded-xl focus:border-utility-blue focus:outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-2">
+                                            <i data-lucide="package" class="w-4 h-4 text-red-500"></i> {t.price_ready}
+                                        </label>
+                                        <input 
+                                            type="number" 
+                                            value={localPrices.ready}
+                                            onChange={(e) => setLocalPrices({...localPrices, ready: Number(e.target.value)})}
+                                            class="w-full text-2xl font-mono font-bold p-3 bg-gray-50 border-2 border-gray-300 rounded-xl focus:border-utility-blue focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={saveSettings}
+                                class="w-full bg-utility-dark text-white font-black text-lg py-4 rounded-xl shadow-hard btn-tactile flex justify-center items-center gap-2 uppercase tracking-wider"
+                            >
+                                <i data-lucide="save" class="w-5 h-5"></i>
+                                {t.save}
+                            </button>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div class="flex flex-col h-full w-full max-w-md mx-auto relative bg-gray-200 overflow-hidden shadow-2xl">
+                    {/* Top Header - Rendered on main tabs */}
+                    {['sell', 'customers', 'sales'].includes(view) && renderHeader()}
+                    
+                    {/* Main Content Areas */}
+                    <div class="flex-1 overflow-hidden relative">
+                        {view === 'sell' && renderSell()}
+                        {view === 'customers' && renderCustomers()}
+                        {view === 'sales' && renderSales()}
+                        
+                        {/* Overlays */}
+                        {view === 'transaction' && renderTransaction()}
+                        {view === 'settings' && renderSettings()}
+                    </div>
+
+                    {/* Bottom Navigation Bar - Only show on primary tabs */}
+                    {['sell', 'customers', 'sales'].includes(view) && (
+                        <div class="bg-white border-t-2 border-gray-200 flex justify-between shrink-0 px-2 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-10 relative">
+                            
+                            <button 
+                                onClick={() => {sounds.click(); setView('sell')}}
+                                class={`flex-1 py-3 flex flex-col items-center justify-center gap-1 transition-colors btn-tactile ${view === 'sell' ? 'text-utility-blue border-t-4 border-utility-blue -mt-[2px]' : 'text-gray-400'}`}
+                            >
+                                <i data-lucide="layout-grid" class={`w-6 h-6 ${view === 'sell' ? 'fill-blue-50' : ''}`}></i>
+                                <span class="text-[10px] font-black uppercase tracking-wider">{t.tab_sell}</span>
+                            </button>
+
+                            <button 
+                                onClick={() => {sounds.click(); setView('customers')}}
+                                class={`flex-1 py-3 flex flex-col items-center justify-center gap-1 transition-colors btn-tactile ${view === 'customers' ? 'text-utility-blue border-t-4 border-utility-blue -mt-[2px]' : 'text-gray-400'}`}
+                            >
+                                <div class="relative">
+                                    <i data-lucide="users" class={`w-6 h-6 ${view === 'customers' ? 'fill-blue-50' : ''}`}></i>
+                                    {transactions.filter(tx => tx.status === 'queue' && new Date(tx.timestamp).toLocaleDateString() === new Date().toLocaleDateString()).length > 0 && (
+                                        <div class="absolute -top-1 -right-1 w-3 h-3 bg-utility-yellow border-2 border-white rounded-full"></div>
+                                    )}
+                                </div>
+                                <span class="text-[10px] font-black uppercase tracking-wider">{t.tab_customers}</span>
+                            </button>
+
+                            <button 
+                                onClick={() => {sounds.click(); setView('sales')}}
+                                class={`flex-1 py-3 flex flex-col items-center justify-center gap-1 transition-colors btn-tactile ${view === 'sales' ? 'text-utility-blue border-t-4 border-utility-blue -mt-[2px]' : 'text-gray-400'}`}
+                            >
+                                <i data-lucide="bar-chart-2" class={`w-6 h-6 ${view === 'sales' ? 'fill-blue-50' : ''}`}></i>
+                                <span class="text-[10px] font-black uppercase tracking-wider">{t.tab_sales}</span>
+                            </button>
+                            
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
