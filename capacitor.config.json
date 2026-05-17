@@ -1,0 +1,13 @@
+{
+  "appId": "com.fastmeat.pos",
+  "appName": "fastmeat",
+  "webDir": "www",
+  "backgroundColor": "#f3f4f6",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0,
+      "launchAutoHide": true,
+      "backgroundColor": "#f3f4f6"
+    }
+  }
+}

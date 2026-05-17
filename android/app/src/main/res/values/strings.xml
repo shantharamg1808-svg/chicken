@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">fastmeat</string>
+    <string name="title_activity_main">fastmeat</string>
+    <string name="package_name">com.fastmeat.pos</string>
+    <string name="custom_url_scheme">com.fastmeat.pos</string>
+</resources>

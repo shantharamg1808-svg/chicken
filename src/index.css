@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'Space Mono', monospace;
+  --color-utility-red: #E53935;
+  --color-utility-green: #43A047;
+  --color-utility-yellow: #FDD835;
+  --color-utility-blue: #1E88E5;
+  --color-utility-dark: #212121;
+  --color-utility-bg: #F5F5F5;
+}
+
+@layer base {
+  body { 
+    background-color: #e0e0e0;
+    overscroll-behavior-y: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  .btn-tactile:active { 
+    transform: translate(2px, 2px); 
+    filter: brightness(0.9); 
+  }
+  .hide-scrollbar::-webkit-scrollbar { 
+    display: none; 
+  }
+  
+  .success-overlay {
+      position: absolute; inset: 0; background: #4CAF50; z-index: 9999;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      animation: fadeOut 2s forwards; pointer-events: auto;
+  }
+  @keyframes fadeOut { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+  .checkmark { width: 120px; height: 120px; color: white; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+  @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  
+  .queue-toast {
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      background: white; color: #333; padding: 12px; border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2); z-index: 9999; width: 90%; max-width: 350px;
+      display: flex; align-items: center; gap: 12px; overflow: hidden;
+      animation: slideDownOut 2.5s forwards; pointer-events: none;
+  }
+  .toast-progress {
+      position: absolute; bottom: 0; left: 0; height: 4px; background: #FDD835;
+      animation: shrinkBar 2s linear forwards;
+  }
+  @keyframes shrinkBar { 0% { width: 100%; } 100% { width: 0%; } }
+  @keyframes slideDownOut { 
+      0% { top: -100px; opacity: 0; } 
+      10% { top: 20px; opacity: 1; } 
+      90% { top: 20px; opacity: 1; } 
+      100% { top: -100px; opacity: 0; } 
+  }
+
+  .swipe-container {
+      display: flex; width: 300%; height: 100%; transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+  .swipe-view { width: 33.333%; height: 100%; overflow-y: auto; }
+}
